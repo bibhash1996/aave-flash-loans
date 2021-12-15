@@ -3,86 +3,84 @@ pragma solidity ^0.6.6;
 import "./aave/FlashLoanReceiverBase.sol";
 import "./aave/ILendingPoolAddressesProvider.sol";
 import "./aave/ILendingPool.sol";
-import "@uniswap/v3-periphery/contracts/interfaces/ISwapRouter.sol";
+import "@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol";
 
 contract Flashloan is FlashLoanReceiverBase {
-    ISwapRouter iSwapRouter;
-    address constant ROUTER_ADDRESS =
-        0xE592427A0AEce92De3Edee1F18E0157C05861564;
-    address private constant DAI = 0x6B175474E89094C44Da98b954EedeAC495271d0F;
-    address private constant WETH9 = 0xd0A1E359811322d97991E03f863a0C30C2cF029C;
+    address internal constant UNISWAP_ROUTER_ADDRESS =
+        0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D;
+
+    //Uniswap V2 router
+    IUniswapV2Router02 public uniswapRouter;
+
+    // DAI Token address on the Kovan testnet
+    address private constant DAI = 0x4F96Fe3b7A6Cf9725f59d353F723c1bDb64CA6Aa;
 
     constructor(address _addressProvider)
         public
         FlashLoanReceiverBase(_addressProvider)
     {
-        iSwapRouter = ISwapRouter(ROUTER_ADDRESS);
+        uniswapRouter = IUniswapV2Router02(UNISWAP_ROUTER_ADDRESS);
     }
 
-    // Swaps to the exact DAI given in the input. The amount of ETH to be deducted is calculated accordingly.
-    function convertEthToExactDai(uint256 daiAmount) external payable {
-        require(daiAmount > 0, "Must pass non 0 DAI amount");
-        require(msg.value > 0, "Must pass non 0 ETH amount");
-
-        uint256 deadline = block.timestamp + 15; // using 'now' for convenience, for mainnet pass deadline from frontend!
-        address tokenIn = WETH9;
-        address tokenOut = DAI;
-        uint24 fee = 3000;
-        address recipient = msg.sender;
-        uint256 amountOut = daiAmount;
-        uint256 amountInMaximum = msg.value;
-        uint160 sqrtPriceLimitX96 = 0;
-
-        ISwapRouter.ExactOutputSingleParams memory params = ISwapRouter
-            .ExactOutputSingleParams(
-                tokenIn,
-                tokenOut,
-                fee,
-                recipient,
-                deadline,
-                amountOut,
-                amountInMaximum,
-                sqrtPriceLimitX96
-            );
-
-        uniswapRouter.exactOutputSingle{value: msg.value}(params);
-        uniswapRouter.refundETH();
-
-        // refund leftover ETH to user
-        (bool success, ) = msg.sender.call{value: address(this).balance}("");
-        require(success, "refund failed");
-    }
-
-    function convertExactEthToDai() external payable {
-        require(msg.value > 0, "Must pass non 0 ETH amount");
-
+    function convertEthToDai(uint256 daiAmount) public payable {
         uint256 deadline = block.timestamp + 15;
-        address tokenIn = WETH9;
-        address tokenOut = DAI;
-        uint24 fee = 3000;
-        address recipient = msg.sender;
-        uint256 amountIn = msg.value;
-        uint256 amountOutMinimum = 1;
-        uint160 sqrtPriceLimitX96 = 0;
-
-        ISwapRouter.ExactInputSingleParams memory params = ISwapRouter
-            .ExactInputSingleParams(
-                tokenIn,
-                tokenOut,
-                fee,
-                recipient,
-                deadline,
-                amountIn,
-                amountOutMinimum,
-                sqrtPriceLimitX96
-            );
-
-        uniswapRouter.exactInputSingle{value: msg.value}(params);
-        uniswapRouter.refundETH();
-
+        address[] memory path = getPathForETHtoDAI();
+        IERC20 endToken = IERC20(path[1]);
+        endToken.approve(address(uniswapRouter), daiAmount);
+        uniswapRouter.swapETHForExactTokens{value: msg.value}(
+            daiAmount,
+            getPathForETHtoDAI(),
+            address(this),
+            deadline
+        );
         // refund leftover ETH to user
         (bool success, ) = msg.sender.call{value: address(this).balance}("");
         require(success, "refund failed");
+    }
+
+    function convertToken1ToToken2(address[] memory path, uint256 _amount)
+        public
+        payable
+        returns (uint256[] memory)
+    {
+        uint256 deadline = block.timestamp + 15;
+        IERC20 endToken = IERC20(path[1]);
+        endToken.approve(address(uniswapRouter), _amount);
+        uint256[] memory amounts = uniswapRouter.swapExactTokensForTokens(
+            _amount,
+            1 ether,
+            path,
+            address(this),
+            deadline
+        );
+
+        endToken.transfer(address(this), amounts[1]);
+        return amounts;
+        // refund leftover ETH to user
+        // (bool success, ) = msg.sender.call{value: address(this).balance}("");
+        // require(success, "refund failed");
+    }
+
+    function getEstimatedETHforDAI(uint256 daiAmount)
+        public
+        view
+        returns (uint256[] memory)
+    {
+        return uniswapRouter.getAmountsIn(daiAmount, getPathForETHtoDAI());
+    }
+
+    function getPathForETHtoDAI() private view returns (address[] memory) {
+        address[] memory path = new address[](2);
+        path[0] = uniswapRouter.WETH();
+        path[1] = DAI;
+        return path;
+    }
+
+    function getPathForDAIToETH() private view returns (address[] memory) {
+        address[] memory path = new address[](2);
+        path[0] = DAI;
+        path[1] = uniswapRouter.WETH();
+        return path;
     }
 
     /**
@@ -104,7 +102,29 @@ contract Flashloan is FlashLoanReceiverBase {
         // !! Ensure that *this contract* has enough of `_reserve` funds to payback the `_fee` !!
         //
 
+        address[] memory pathFromEthToDai = getPathForETHtoDAI();
+        uint256[] memory DaiAmounts = convertToken1ToToken2(
+            pathFromEthToDai,
+            _amount
+        );
+        //swapping back to ETHER from DAI
+        address[] memory pathFromDaiToEth = getPathForDAIToETH();
+        uint256[] memory EtherAmounts = convertToken1ToToken2(
+            pathFromDaiToEth,
+            DaiAmounts[1]
+        );
+
+        //profit _amount - EtherAmounts[1]
+
         uint256 totalDebt = _amount.add(_fee);
+
+        // for (uint256 i = 0; i < assets.length; i++) {
+        //     uint256 amountOwing = amounts[i].add(premiums[i]);
+        //     IERC20(assets[i]).approve(address(LENDING_POOL), amountOwing);
+        // }
+
+        // return true;
+
         transferFundsBackToPoolInternal(_reserve, totalDebt);
     }
 
@@ -120,6 +140,4 @@ contract Flashloan is FlashLoanReceiverBase {
         );
         lendingPool.flashLoan(address(this), _asset, _amount, data);
     }
-
-    receive() external payable {}
 }
