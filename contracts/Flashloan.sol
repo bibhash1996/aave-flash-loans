@@ -25,7 +25,7 @@ contract Flashloan is FlashLoanReceiverBase {
     function convertEthToDai(uint256 daiAmount) public payable {
         uint256 deadline = block.timestamp + 15;
         address[] memory path = getPathForETHtoDAI();
-        IERC20 endToken = IERC20(path[1]);
+        IERC20 endToken = IERC20(path[0]);
         endToken.approve(address(uniswapRouter), daiAmount);
         uniswapRouter.swapETHForExactTokens{value: msg.value}(
             daiAmount,
@@ -44,17 +44,16 @@ contract Flashloan is FlashLoanReceiverBase {
         returns (uint256[] memory)
     {
         uint256 deadline = block.timestamp + 15;
-        IERC20 endToken = IERC20(path[1]);
+        IERC20 endToken = IERC20(path[0]);
         endToken.approve(address(uniswapRouter), _amount);
         uint256[] memory amounts = uniswapRouter.swapExactTokensForTokens(
             _amount,
-            1 ether,
+            0.5 ether,
             path,
             address(this),
             deadline
         );
-
-        endToken.transfer(address(this), amounts[1]);
+        // endToken.transfer(address(this), amounts[1]);
         return amounts;
         // refund leftover ETH to user
         // (bool success, ) = msg.sender.call{value: address(this).balance}("");
@@ -107,23 +106,13 @@ contract Flashloan is FlashLoanReceiverBase {
             pathFromEthToDai,
             _amount
         );
+
         //swapping back to ETHER from DAI
         address[] memory pathFromDaiToEth = getPathForDAIToETH();
-        uint256[] memory EtherAmounts = convertToken1ToToken2(
-            pathFromDaiToEth,
-            DaiAmounts[1]
-        );
-
-        //profit _amount - EtherAmounts[1]
+        // uint256[] memory EtherAmounts =
+        convertToken1ToToken2(pathFromDaiToEth, DaiAmounts[1]);
 
         uint256 totalDebt = _amount.add(_fee);
-
-        // for (uint256 i = 0; i < assets.length; i++) {
-        //     uint256 amountOwing = amounts[i].add(premiums[i]);
-        //     IERC20(assets[i]).approve(address(LENDING_POOL), amountOwing);
-        // }
-
-        // return true;
 
         transferFundsBackToPoolInternal(_reserve, totalDebt);
     }
