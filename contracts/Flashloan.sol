@@ -13,7 +13,10 @@ contract Flashloan is FlashLoanReceiverBase {
     IUniswapV2Router02 public uniswapRouter;
 
     // DAI Token address on the Kovan testnet
-    address private constant DAI = 0x4F96Fe3b7A6Cf9725f59d353F723c1bDb64CA6Aa;
+    address private constant DAI = 0xFf795577d9AC8bD7D90Ee22b6C1703490b6512FD;
+
+    //LINK Token address
+    address private constant LINK = 0xa36085F69e2889c224210F603D836748e7dC0088;
 
     constructor(address _addressProvider)
         public
@@ -45,7 +48,10 @@ contract Flashloan is FlashLoanReceiverBase {
     {
         uint256 deadline = block.timestamp + 15;
         IERC20 endToken = IERC20(path[0]);
-        endToken.approve(address(uniswapRouter), _amount);
+        require(
+            endToken.approve(address(uniswapRouter), _amount),
+            "Error approving token"
+        );
         uint256[] memory amounts = uniswapRouter.swapExactTokensForTokens(
             _amount,
             0.5 ether,
@@ -70,7 +76,8 @@ contract Flashloan is FlashLoanReceiverBase {
 
     function getPathForETHtoDAI() private view returns (address[] memory) {
         address[] memory path = new address[](2);
-        path[0] = uniswapRouter.WETH();
+        // path[0] = uniswapRouter.WETH();
+        path[0] = LINK;
         path[1] = DAI;
         return path;
     }
@@ -78,7 +85,8 @@ contract Flashloan is FlashLoanReceiverBase {
     function getPathForDAIToETH() private view returns (address[] memory) {
         address[] memory path = new address[](2);
         path[0] = DAI;
-        path[1] = uniswapRouter.WETH();
+        // path[1] = uniswapRouter.WETH();
+        path[1] = LINK;
         return path;
     }
 
@@ -109,9 +117,11 @@ contract Flashloan is FlashLoanReceiverBase {
 
         //swapping back to ETHER from DAI
         address[] memory pathFromDaiToEth = getPathForDAIToETH();
-        // uint256[] memory EtherAmounts =
-        convertToken1ToToken2(pathFromDaiToEth, DaiAmounts[1]);
-
+        uint256[] memory EtherAmounts = convertToken1ToToken2(
+            pathFromDaiToEth,
+            DaiAmounts[1]
+        );
+        require(EtherAmounts[1] - _amount < 0, "Noo profits");
         uint256 totalDebt = _amount.add(_fee);
 
         transferFundsBackToPoolInternal(_reserve, totalDebt);
@@ -119,6 +129,8 @@ contract Flashloan is FlashLoanReceiverBase {
 
     /**
         Flash loan 1000000000000000000 wei (1 ether) worth of `_asset`
+        use the RESERVE ADDRESS FROM THE aave docs;
+        for LINK Token  = 0xAD5ce863aE3E4E9394Ab43d4ba0D80f419F61789
      */
     function flashloan(address _asset, uint256 _amount) public onlyOwner {
         bytes memory data = "";
