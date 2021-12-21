@@ -83,17 +83,17 @@ contract Flashloan is FlashLoanReceiverBase {
         return path;
     }
 
-    function getPathFromDAItoLINK() private view returns (address[] memory) {
+    function getPathFromDAItoBAT() private view returns (address[] memory) {
         address[] memory path = new address[](2);
         path[0] = DAI;
         // path[1] = uniswapRouter.WETH();
-        path[1] = LINK;
+        path[1] = BAT;
         return path;
     }
 
-    function getPathFromDAItoLINK() private view returns (address[] memory) {
+    function getPathFromBATtoLINK() private view returns (address[] memory) {
         address[] memory path = new address[](2);
-        path[0] = DAI;
+        path[0] = BAT;
         // path[1] = uniswapRouter.WETH();
         path[1] = LINK;
         return path;
@@ -118,26 +118,28 @@ contract Flashloan is FlashLoanReceiverBase {
         // !! Ensure that *this contract* has enough of `_reserve` funds to payback the `_fee` !!
         //
 
-        address[] memory pathFromEthToDai = getPathFromLINKtoDAI();
+        //link to dai
+        address[] memory pathFromLinkToDai = getPathFromLINKtoDAI();
         uint256[] memory DaiAmounts = convertToken1ToToken2(
-            pathFromEthToDai,
+            pathFromLinkToDai,
             _amount
         );
 
-        //swapping back to ETHER from DAI
-        address[] memory pathFromDaiToBat = getPathFromDAItoLINK();
-        uint256[] memory EtherAmounts = convertToken1ToToken2(
-            pathFromDaiToEth,
+        //dai to bat
+        address[] memory pathFromDaiToBat = getPathFromDAItoBAT();
+        uint256[] memory batAmounts = convertToken1ToToken2(
+            pathFromDaiToBat,
             DaiAmounts[1]
         );
 
-        //swapping back to ETHER from DAI
-        address[] memory pathFromDaiToEth = getPathFromDAItoLINK();
-        uint256[] memory EtherAmounts = convertToken1ToToken2(
-            pathFromDaiToEth,
-            DaiAmounts[1]
+        //bat to link
+        address[] memory pathFromBatToLink = getPathFromBATtoLINK();
+        uint256[] memory linkAmounts = convertToken1ToToken2(
+            pathFromBatToLink,
+            batAmounts[1]
         );
-        require(EtherAmounts[1] - _amount < 0, "Noo profits");
+
+        require(linkAmounts[1] - _amount < 0, "Noo profits");
         uint256 totalDebt = _amount.add(_fee);
 
         transferFundsBackToPoolInternal(_reserve, totalDebt);
