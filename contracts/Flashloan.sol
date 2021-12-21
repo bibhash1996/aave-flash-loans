@@ -14,6 +14,7 @@ contract Flashloan is FlashLoanReceiverBase {
 
     // DAI Token address on the Kovan testnet
     address private constant DAI = 0xFf795577d9AC8bD7D90Ee22b6C1703490b6512FD;
+    address public constant BAT = 0x2d12186Fbb9f9a8C28B3FfdD4c42920f8539D738;
 
     //LINK Token address
     address private constant LINK = 0xa36085F69e2889c224210F603D836748e7dC0088;
@@ -27,12 +28,12 @@ contract Flashloan is FlashLoanReceiverBase {
 
     function convertEthToDai(uint256 daiAmount) public payable {
         uint256 deadline = block.timestamp + 15;
-        address[] memory path = getPathForETHtoDAI();
+        address[] memory path = getPathFromLINKtoDAI();
         IERC20 endToken = IERC20(path[0]);
         endToken.approve(address(uniswapRouter), daiAmount);
         uniswapRouter.swapETHForExactTokens{value: msg.value}(
             daiAmount,
-            getPathForETHtoDAI(),
+            getPathFromLINKtoDAI(),
             address(this),
             deadline
         );
@@ -71,10 +72,10 @@ contract Flashloan is FlashLoanReceiverBase {
         view
         returns (uint256[] memory)
     {
-        return uniswapRouter.getAmountsIn(daiAmount, getPathForETHtoDAI());
+        return uniswapRouter.getAmountsIn(daiAmount, getPathFromLINKtoDAI());
     }
 
-    function getPathForETHtoDAI() private view returns (address[] memory) {
+    function getPathFromLINKtoDAI() private view returns (address[] memory) {
         address[] memory path = new address[](2);
         // path[0] = uniswapRouter.WETH();
         path[0] = LINK;
@@ -82,7 +83,15 @@ contract Flashloan is FlashLoanReceiverBase {
         return path;
     }
 
-    function getPathForDAIToETH() private view returns (address[] memory) {
+    function getPathFromDAItoLINK() private view returns (address[] memory) {
+        address[] memory path = new address[](2);
+        path[0] = DAI;
+        // path[1] = uniswapRouter.WETH();
+        path[1] = LINK;
+        return path;
+    }
+
+    function getPathFromDAItoLINK() private view returns (address[] memory) {
         address[] memory path = new address[](2);
         path[0] = DAI;
         // path[1] = uniswapRouter.WETH();
@@ -109,14 +118,21 @@ contract Flashloan is FlashLoanReceiverBase {
         // !! Ensure that *this contract* has enough of `_reserve` funds to payback the `_fee` !!
         //
 
-        address[] memory pathFromEthToDai = getPathForETHtoDAI();
+        address[] memory pathFromEthToDai = getPathFromLINKtoDAI();
         uint256[] memory DaiAmounts = convertToken1ToToken2(
             pathFromEthToDai,
             _amount
         );
 
         //swapping back to ETHER from DAI
-        address[] memory pathFromDaiToEth = getPathForDAIToETH();
+        address[] memory pathFromDaiToBat = getPathFromDAItoLINK();
+        uint256[] memory EtherAmounts = convertToken1ToToken2(
+            pathFromDaiToEth,
+            DaiAmounts[1]
+        );
+
+        //swapping back to ETHER from DAI
+        address[] memory pathFromDaiToEth = getPathFromDAItoLINK();
         uint256[] memory EtherAmounts = convertToken1ToToken2(
             pathFromDaiToEth,
             DaiAmounts[1]
