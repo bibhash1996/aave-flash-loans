@@ -53,15 +53,21 @@ contract Flashloan is FlashLoanReceiverBase {
             endToken.approve(address(uniswapRouter), _amount),
             "Error approving token"
         );
-        uint256[] memory amounts = uniswapRouter.swapExactTokensForTokens(
+        uint256[] memory amountsOut = uniswapRouter.getAmountsOut(
             _amount,
-            0.5 ether,
+            path
+        );
+        // uint256[] memory amounts =
+        uniswapRouter.swapExactTokensForTokens(
+            _amount,
+            // 0.00005 ether,
+            amountsOut[1],
             path,
             address(this),
             deadline
         );
         // endToken.transfer(address(this), amounts[1]);
-        return amounts;
+        // return amounts;
         // refund leftover ETH to user
         // (bool success, ) = msg.sender.call{value: address(this).balance}("");
         // require(success, "refund failed");
@@ -120,28 +126,27 @@ contract Flashloan is FlashLoanReceiverBase {
 
         //link to dai
         address[] memory pathFromLinkToDai = getPathFromLINKtoDAI();
-        uint256[] memory DaiAmounts = convertToken1ToToken2(
-            pathFromLinkToDai,
-            _amount
-        );
+        // uint256[] memory DaiAmounts =
+        convertToken1ToToken2(pathFromLinkToDai, _amount);
 
         //dai to bat
+        uint256 daiAmount = IERC20(DAI).balanceOf(address(this));
         address[] memory pathFromDaiToBat = getPathFromDAItoBAT();
-        uint256[] memory batAmounts = convertToken1ToToken2(
-            pathFromDaiToBat,
-            DaiAmounts[1]
-        );
+        // uint256[] memory batAmounts =
+        convertToken1ToToken2(pathFromDaiToBat, daiAmount);
 
         //bat to link
+        uint256 batAmount = IERC20(BAT).balanceOf(address(this));
         address[] memory pathFromBatToLink = getPathFromBATtoLINK();
-        uint256[] memory linkAmounts = convertToken1ToToken2(
-            pathFromBatToLink,
-            batAmounts[1]
-        );
+        // uint256[] memory linkAmounts =
+        convertToken1ToToken2(pathFromBatToLink, batAmount);
 
-        require(linkAmounts[1] - _amount < 0, "Noo profits");
+        // require(linkAmounts[1] - _amount < 0, "Noo profits");
         uint256 totalDebt = _amount.add(_fee);
-
+        require(
+            IERC20(LINK).approve(address(uniswapRouter), totalDebt),
+            "Error approving data"
+        );
         transferFundsBackToPoolInternal(_reserve, totalDebt);
     }
 
